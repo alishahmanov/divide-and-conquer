@@ -11,11 +11,16 @@ public class App {
         }
 
         String algo = args[0].toLowerCase();
-        int n = parseInt(args[1], "n должно быть целым положительным");
-        if (n < 0) die("n должно быть неотрицательным");
+
+        String[] nStrings = args[1].split(",");
+        int[] nValues = new int[nStrings.length];
+        for (int i = 0; i < nStrings.length; i++) {
+            nValues[i] = parseInt(nStrings[i].trim(), "n должно быть целым положительным");
+            if (nValues[i] <= 0) die("n должно быть положительным");
+        }
 
         int runs = 1;
-        int k = Math.max(0, n / 2);
+        int kOpt = -1;
         String out = "results.csv";
         long seed = System.currentTimeMillis();
 
@@ -25,7 +30,7 @@ public class App {
                     i++; runs = parseIntOrDie(args, i, "--runs требует число");
                     break;
                 case "--k":
-                    i++; k = parseIntOrDie(args, i, "--k требует число (0-based)");
+                    i++; kOpt = parseIntOrDie(args, i, "--k требует число (0-based)");
                     break;
                 case "--out":
                     i++; if (i >= args.length) die("--out требует путь к файлу");
@@ -39,16 +44,13 @@ public class App {
             }
         }
 
-        if (algo.equals("select")) {
-            if (n == 0) die("Для select требуется n > 0");
-            if (k < 0 || k >= n) die("--k должен быть в диапазоне [0, n-1]");
-        }
+        try (CSVWriter csv = new CSVWriter(out)) {
+            for (int n : nValues) {
+                int kForThis = (kOpt < 0 ? n / 2 : Math.min(Math.max(0, kOpt), Math.max(0, n - 1)));
 
-        System.out.printf("Алгоритм: %s | n=%d | runs=%d | out=%s | seed=%d%n", algo, n, runs, out, seed);
+                System.out.printf("Алгоритм: %s | n=%d | runs=%d | out=%s | seed=%d%n",
+                        algo, n, runs, out, seed);
 
-        try {
-            CSVWriter csv = new CSVWriter(out);
-            try {
                 switch (algo) {
                     case "mergesort":
                         runMergeSort(n, runs, seed, csv);
@@ -57,19 +59,16 @@ public class App {
                         runQuickSort(n, runs, seed, csv);
                         break;
                     case "select":
-                        runDeterministicSelect(n, k, runs, seed, csv);
+                        runDeterministicSelect(n, kForThis, runs, seed, csv);
                         break;
                     case "closest":
                         runClosestPair(n, runs, seed, csv);
                         break;
                     default:
-                        csv.close();
                         printUsageAndExit("Неизвестный алгоритм: " + algo);
                 }
-            } finally {
-                csv.close();
             }
-            System.out.println("Готово. Результаты записаны в: " + out);
+            System.out.println("Готово. Результаты добавлены в: " + out);
         } catch (IOException e) {
             e.printStackTrace();
             die("Ошибка записи CSV: " + e.getMessage());
@@ -90,8 +89,8 @@ public class App {
 
             long ms = (t1 - t0) / 1_000_000;
             csv.writeRow(n, counter.getNumberOfComparisons(), counter.getAllocation(), counter.getMaxDepth(), ms);
-            System.out.printf("[run %d] mergesort: time=%d ms, cmp=%d, alloc=%d, depth=%d%n",
-                    r + 1, ms, counter.getNumberOfComparisons(), counter.getAllocation(), counter.getMaxDepth());
+            System.out.printf("[run %d] mergesort (n=%d): time=%d ms, cmp=%d, alloc=%d, depth=%d%n",
+                    r + 1, n, ms, counter.getNumberOfComparisons(), counter.getAllocation(), counter.getMaxDepth());
         }
     }
 
@@ -109,8 +108,8 @@ public class App {
 
             long ms = (t1 - t0) / 1_000_000;
             csv.writeRow(n, counter.getNumberOfComparisons(), counter.getAllocation(), counter.getMaxDepth(), ms);
-            System.out.printf("[run %d] quicksort: time=%d ms, cmp=%d, alloc=%d, depth=%d%n",
-                    r + 1, ms, counter.getNumberOfComparisons(), counter.getAllocation(), counter.getMaxDepth());
+            System.out.printf("[run %d] quicksort (n=%d): time=%d ms, cmp=%d, alloc=%d, depth=%d%n",
+                    r + 1, n, ms, counter.getNumberOfComparisons(), counter.getAllocation(), counter.getMaxDepth());
         }
     }
 
@@ -128,8 +127,8 @@ public class App {
 
             long ms = (t1 - t0) / 1_000_000;
             csv.writeRow(n, counter.getNumberOfComparisons(), counter.getAllocation(), counter.getMaxDepth(), ms);
-            System.out.printf("[run %d] select(k=%d): val=%d, time=%d ms, cmp=%d, alloc=%d, depth=%d%n",
-                    r + 1, k, value, ms, counter.getNumberOfComparisons(), counter.getAllocation(), counter.getMaxDepth());
+            System.out.printf("[run %d] select (n=%d, k=%d): val=%d, time=%d ms, cmp=%d, alloc=%d, depth=%d%n",
+                    r + 1, n, k, value, ms, counter.getNumberOfComparisons(), counter.getAllocation(), counter.getMaxDepth());
         }
     }
 
@@ -150,8 +149,8 @@ public class App {
 
             long ms = (t1 - t0) / 1_000_000;
             csv.writeRow(n, counter.getNumberOfComparisons(), counter.getAllocation(), counter.getMaxDepth(), ms);
-            System.out.printf("[run %d] closest: d=%.6f, time=%d ms, cmp=%d, alloc=%d, depth=%d%n",
-                    r + 1, d, ms, counter.getNumberOfComparisons(), counter.getAllocation(), counter.getMaxDepth());
+            System.out.printf("[run %d] closest (n=%d): d=%.6f, time=%d ms, cmp=%d, alloc=%d, depth=%d%n",
+                    r + 1, n, d, ms, counter.getNumberOfComparisons(), counter.getAllocation(), counter.getMaxDepth());
         }
     }
 
@@ -162,13 +161,9 @@ public class App {
     private static void printUsageAndExit(String msg) {
         if (msg != null) System.err.println(msg);
         System.err.println("Usage:");
-        System.err.println("  java -jar target/divide-and-conquer-1.0-SNAPSHOT.jar <algo> <n> [--runs R] [--k K] [--out file.csv] [--seed S]");
+        System.err.println("  java -cp target/divide-and-conquer-1.0-SNAPSHOT.jar assignment1.App <algo> <n|n1,n2,...>");
+        System.err.println("  [--runs R] [--k K] [--out file.csv] [--seed S]");
         System.err.println("  <algo> ∈ { mergesort | quicksort | select | closest }");
-        System.err.println("  <n>    размер массива / число точек");
-        System.err.println("  --runs  сколько прогонов (default 1)");
-        System.err.println("  --k     для select: порядковая статистика (0..n-1), default n/2");
-        System.err.println("  --out   путь к csv (default results.csv)");
-        System.err.println("  --seed  зерно ГПСЧ (default: текущее время)");
         System.exit(1);
     }
 
