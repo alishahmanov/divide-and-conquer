@@ -1,4 +1,0 @@
-n,comparisons,allocations,maxDepth,timeMs
-10000,21012,21076,1,2
-10000,19790,19485,1,1
-10000,19943,19627,1,0
